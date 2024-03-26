@@ -13,7 +13,7 @@ set.seed(1234)
 yrs <- c(2019, 2021:2024)
 target_yr <- 2024 # Would need to update this code annually based on the target yr
 # Get CBBData
-cbd_login(username = "jmarkman", password = "224488Jarrett!x")
+cbd_login(username = "username", password = "password")
 # Get team data
 cbd_teams <- cbd_teams() %>%
   summarise(common_team, color, alt_color, espn_logo, espn_dark_logo, logo, color, alt_color)
@@ -24,7 +24,7 @@ get_preseason <- function(yr) {
   response <- GET(url)
   html_content <- read_html(response)
   df <- html_content %>% html_table(header = TRUE)
-  if (yr %in% c(2019, 2021:2023)) {
+  if (!yr %in% target_yr) { # If the yr is not in the target year provided
     df <- df[[1]]
     df <- df[1:nrow(df), c(1, 3)]
     colnames(df) <- c("team", "preseason_ap_ranking")
@@ -33,7 +33,7 @@ get_preseason <- function(yr) {
       filter(!is.na(preseason_ap_ranking) & team != "") %>%
       arrange(preseason_ap_ranking) %>%
       as.data.frame() 
-  } else if (yr == 2024) {
+  } else if (yr %in% target_yr) { # Get data for the target year
     df <- df[[2]]
     df <- df[1:nrow(df), c(1, 3)]
     colnames(df) <- c("team", "preseason_ap_ranking")
@@ -79,7 +79,7 @@ get_quad_data <- function(yr) {
   colnames(df) <- make.unique(colnames(df))
   df <- df %>%
     filter(Team != "Team") %>%
-    mutate(Team = trimws(gsub("\\bN4O\\b|\\bF4O\\b|[0-9]", "", Team)),
+    mutate(Team = trimws(gsub("\\bN4O\\b|\\bF4O\\b|[0-9]", "", Team)), # Remove F4O and N4O from teams scraped from torvik
            year = yr) %>%
     select(team = Team, year, net = NET, quad_1a = Q1A, quad_1 = Q1, quad_2 = Q2, quad_3 = Q3, quad_4 = Q4)
   return(df)
@@ -142,6 +142,7 @@ overall <- szn %>%
     wins = sum(win), gp = n(), losses = gp - wins, win_pct = wins/gp
   ) %>%
   ungroup()
+# Get team win stats based on home/neutral/away
 splits <- szn %>%
   group_by(team, year, location) %>%
   summarise(
@@ -175,6 +176,7 @@ tourney_prob_df <- data %>%
   separate(quad_3, c("quad_3_wins", "quad_3_losses"), "-") %>%
   separate(quad_4, c("quad_4_wins", "quad_4_losses"), "-") %>%
   mutate(
+    # Get numeric data for NET and quad data
     net = as.numeric(net), p6 = ifelse(conf %in% c("ACC", "Big Ten", "Big 12", "Big East", "Pac-12", "SEC"), 1, 0),
     quad_1a_wins = as.numeric(quad_1a_wins), quad_1a_losses = as.numeric(quad_1a_losses),
     quad_1_wins = as.numeric(quad_1_wins), quad_1_losses = as.numeric(quad_1_losses),
@@ -185,6 +187,7 @@ tourney_prob_df <- data %>%
     quad_1b_losses = quad_1_losses - quad_1a_losses
   ) %>%
   mutate(preseason_ranked = ifelse(is.na(preseason_ap_ranking), 0, 1))
+  # Create a variable that represents if a team was ranked or not in the preseason
 prediction_tourney_df <- data %>%
   filter(year == target_yr) %>% # 2024 is this years desired predictions
   # Pick columns for modeling
@@ -246,29 +249,35 @@ ggsave("Selection Committee Tendencies.png", corr_plot)
 model_df <- df %>%
   select(-c(conf, preseason_ap_ranking)) %>%
   na.omit()
-model_df$at_large <- as.factor(model_df$at_large)
-get_accuracy <- function(part, folds) {
+model_df$at_large <- as.factor(model_df$at_large) # Set at_large to a factor 
+# Create a function that finds the accuracy for a random forest model
+get_accuracy <- function(part, folds) { # Select partition value and number of folds
   print(paste("Partition:", part, "Folds:", folds))
-  ind <- sample(1:nrow(model_df), part * nrow(model_df))
+  ind <- sample(1:nrow(model_df), part * nrow(model_df)) # Create ind
   train_data <- model_df[ind, ] %>%
     select(-c(team, color, alt_color, espn_logo, logo))
-  ctrl <- trainControl(method = "cv", number = folds)
-  rf_model <- train(at_large ~ ., data = train_data, method = "rf", trControl = ctrl)
+  ctrl <- trainControl(method = "cv", number = folds) # Create cross-validation folds
+  rf_model <- train(at_large ~ ., data = train_data, method = "rf", trControl = ctrl) # Create k-folds rf model
   accuracy <- rf_model$results %>%
     select(Accuracy) %>%
     slice(1) %>% unlist()
   return(accuracy)
+  # Get most accurate results
 }
+# Create possible partitions of data and number of folds
 parts <- seq(0.6, 0.8, by = 0.01)
 folds <- 5:10
+# Create a combination of all combinations for parts and folds
 part_folds_combinations <- expand.grid(partition = parts, folds = folds)
 results <- part_folds_combinations %>%
-  mutate(accuracy = pmap_dbl(list(partition, folds), get_accuracy))
+  mutate(accuracy = pmap_dbl(list(partition, folds), get_accuracy)) # Map values to get accuracy for each part and fold
+# Get top values
 vals <- results %>%
   arrange(desc(accuracy)) %>%
   head(1)
 partition <- unlist(vals$partition)
 optimal_folds <- unlist(vals$folds)
+# Run the random forest model
 ind <- sample(1:nrow(model_df), partition * nrow(model_df))
 train_data <- model_df[ind, ] %>%
   select(-c(team, color, alt_color, espn_logo, logo))
@@ -298,6 +307,7 @@ conf_data %>%
   tab_header(title = "Model Predictive Accuracy", subtitle = paste0("Confusion Matrix: ", acc, "% Accuracy"))
 # 2 Bid evaluation
 viz_df <- cbind(validation_df, predictions)
+
 # 2a. Correctly chosen bids
 viz_df %>%
   filter(at_large == 1 & predictions == 1) %>%
