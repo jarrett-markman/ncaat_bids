@@ -1,3 +1,7 @@
 # Predicting NCAA Tournament Bids
 
-- Working code for a project regarding which teams the committee will choose for march madness
+I have always been fascinated by the annual NCAA Tournament, carefully making my predictions to win my tournament groups. While it's extremely unlikely to accurately predict a "perfect" bracket (in fact, there is about a 1 in 9.2 quintillion chance if you assume each game is a coin flip), something that is always a hot debate is which teams make the tournament and get one of the 36 prized at-large bids. It's also much more likely to accurately predict, by measuring the tendencies of the selection committee in the past. With this information, I decided to work on a small project attempting to forecast the 36 at-large teams in the 2024 NCAA Tournament. 
+
+To perform this analysis I used data from 2019 until 2023 (excluding 2020), which included NET ranking, conference, Quad 1/2/3/4 wins and losses, performance on neutral courts and on the road as well as if the team was ranked in the preseason or not. To make predictions I used k-fold cross validation to build a random forest model that classified the whether a team made the tournament or not, while optimizing the best possible data partition and k-fold split. 
+
+While the overall results weren't super accurate (the model actually selected 44 teams), and for the top 36 teams was 33/36, with more model tuning, and more data I hope to improve upon this analysis for predicting the teams that make the 2025 NCAA Tournament!
